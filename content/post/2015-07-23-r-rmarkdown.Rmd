@@ -10,17 +10,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
-# installing all the libraries required 
-
-# install.packages("tidyverse")
-# install.packages("blogdown")
-# install.packages("tidyverse")
-# install.packages("ggplot2")
-# install.packages("dplyr")
-# install.packages("opendatatoronto")
-# install.packages('stringr')
-
-# import the libraries
+# import the required libraries
 library(tidyverse)
 library(ggplot2)
 library(blogdown)
@@ -61,16 +51,20 @@ The Covid-19 Cases in Toronto Data set contains a list of all the reported Coron
 ```{r}
 # First few rows of the dataset
 head(covid_raw_data)
+
 # removing rows with any na values for any column.
 covid_data <- drop_na(covid_raw_data)
+
 # filtering rows with classification as probable 
 covid_data <- covid_data %>% filter(Classification == "CONFIRMED")
+
 # selecting only the columns required
 covid_data <- covid_data %>% select('Episode Date','Outbreak Associated', 'Age Group', 'Source of Infection', 'Client Gender', 'Outcome', 'Ever Hospitalized')
 
-# creating plots for better visual grasp
+# creating barplots for better visual grasp of different variables that might be of interest.
 ages <- covid_data %>% select('Age Group')
 source <- covid_data %>% select('Source of Infection')
+
 barplot(table(ages),  las=2, cex.names=.5)
 barplot(table(source),  las=2, cex.names=.5)
 ```
@@ -83,25 +77,30 @@ First we clean up the data and extract all the columns which might be useful in 
 covid_time_series <- as.data.frame(table(covid_data %>% select('Episode Date'))) %>%  slice(1:(n()-3))
 covid_time_series <- covid_time_series %>% rename('Date' = 'Var1', 'Number of Cases' = 'Freq')
 
+# Scatter plot of the number of days passed v.s. the number of cases.
 ggplot(covid_time_series, aes (x = Date, y = `Number of Cases`))  + labs( title = "Number of COVID cases Overtime", xlab = "Dates from Jan to Sept 23rd", ylab = "Number of cases") +  geom_point()  +theme_bw()+theme(plot.title = element_text(hjust = 0.5))
 
-#ggplot(covid_time_series, aes (x = `Number of Cases`)) + labs( title = "Number of COVID cases Overtime", xlab = "Dates from Jan to Sept 23rd", ylab = "Number of cases") +  geom_histogram()  +theme_bw()+theme(plot.title = element_text(hjust = 0.5))
 barplot(covid_time_series$`Number of Cases`)
 summary(covid_time_series$`Number of Cases`)
 ```
 The above plot if our major concern and it is a time-series(number of cases as the days passed by) graph which portrays the two variables date and count/number of cases. *DATE* is our **Explanatory variable** because the number of cases clearly depends on the how long COVID has been in a community. The *Number of cases* are a **response variable** because it is what we are interested in predicting and want to see the current trend so far. By eyeballing the graph we can see so strong trends in the data that we will explore thoroughly later in the blog.The distribution for the response variable can be viewed simply as the probability of the variable having a certain x value. We can see that it is a bi modal variable because it has two peaks of maximas. Also we can safely assume that the data is normal as it is symmetric about the center respectively for the two modes above.Lastly, summary statistics which consists of minimum, maximum, mean and the percentiles(*25th*, *50th*, *75th*) for the number of cases are also displayed.
 
 ```{r}
-# converting the dates in numerical x values assuming.
+
+# converting the string number to integers
 numextract <- function(string){ 
   str_extract(string, "\\-*\\d+\\.*\\d*")
 } 
+
+# Converting to number of days passes since first Covid case for each of the date row.
 covid_time_series <- covid_time_series %>% arrange(Date) %>% mutate(diff = numextract(difftime(Date, '2020-01-21')/(60*60*24)))
 covid_time_series$diff <- as.integer(covid_time_series$diff)
 sapply(covid_time_series, class)
 
+# Plotting a simple linear regression for the whole data-set
 linear_model = lm(covid_time_series$`Number of Cases` ~ covid_time_series$diff, data = covid_time_series)
 
+# Creating the scatter plot for the data and the line of best fit.
 ggplot(covid_time_series, aes(x = diff,y = `Number of Cases`)) + 
   xlab("Number of Days since first Covid case in Toronto")+
   ggtitle("Number of COVID cases v.s Number of Days Passed")+
@@ -116,29 +115,37 @@ summary(linear_model)
 We first add another column into the data set that consists of the number of days passed between the first day COVID case was recorded which was 2020-01-21 to the Date in each of the rows. This is a numeric value and can be used as the x parameter for our linear regression model. We use the line of best fit (also called the regression line) to model all the number of cases in Toronto as the number of days increases. Clearly, we can see that there is a downtrend overall, however this should be taken with a pinch of salt. The reason being that our current best fit line has very large error with many data points. Error is the difference between the actual data-point and the number of cases predicted by our line for any x value. A model is good if and only if the errors are relatively small. Thus our current model lacks the sophistication required to draw any certain conclusion yet. 
 
 ```{r message = FALSE}
+
+# Adding a column with id = row.id
 covid_time_series <- covid_time_series %>% mutate(id = row_number())
+
+# Adding another column for splitting the data into four equal phases.
 covid_time_series <- covid_time_series %>% mutate(phase = ifelse(id <= 60, 1, ifelse(id <=120 & id > 60, 2, ifelse(id <= 180 & id > 120, 3, 4))))
 
+# Splitting the data into 4 different data frames.
 phase1 <- covid_time_series[1:60,]
 phase2 <- covid_time_series[61:120,]
 phase3 <- covid_time_series[121:180,]
 phase4 <- covid_time_series[180:214,]
 
+# Modeling the simple linear regression for all the phases.
 linear_model1 <- lm(phase1$`Number of Cases` ~ phase1$diff, phase1)
 linear_model2 <- lm(phase2$`Number of Cases` ~ phase2$diff, phase2)
 linear_model3 <- lm(phase3$`Number of Cases` ~ phase3$diff, phase3)
 linear_model4 <- lm(phase4$`Number of Cases` ~ phase4$diff, phase4)
 
-
-ggplot(covid_time_series, aes(x = diff, y = `Number of Cases`, color = as.factor(phase))) +        geom_point() +  
+# Creating a combined graph for all the days.
+ggplot(covid_time_series, aes(x = diff, y = `Number of Cases`, color = factor(phase))) +        geom_point() +  
          scale_colour_manual(values = c("red", "orange", "purple", "blue")) + 
          theme() + labs(x = "Number of Days since first Case", title = "Number of Cases vs Number of Days passed") + 
   geom_smooth(method = lm, se = FALSE )
 
-summary(linear_model1)
-summary(linear_model2)
-summary(linear_model3)
-summary(linear_model4)
+# The following code is commented for readability of blog.
+# The slope parameter were calculated from here.
+# summary(linear_model1)
+# summary(linear_model2)
+# summary(linear_model3)
+# summary(linear_model4)
 
 ```
 To address the concern in the previous paragraph we have divided our data set into 4 equal halves called phases. Each phase consists approximately 70 days worth of data. Now we  plot 4 regression lines to more accurately depict the scenario and this time the results are astonishingly better than before. Let us see how. Clearly, the lines of best fit are more tighter and closer to the data points and thus we have lower error rates and better fit. Thus we can conclude that even though the middle two phases we a sharp down-trend we are amid of the start of an uptrend if the necessary precautions are not taken.

@@ -60,7 +60,7 @@
 
   <article class="article">
     
-    <span class="article-duration">14 min read</span>
+    <span class="article-duration">12 min read</span>
     
 
     <h1 class="article-title">COVID-19 is on Decline. OR IS IT?</h1>
@@ -114,14 +114,17 @@ head(covid_raw_data)</code></pre>
 ## #   ICU` &lt;chr&gt;, `Ever Intubated` &lt;chr&gt;</code></pre>
 <pre class="r"><code># removing rows with any na values for any column.
 covid_data &lt;- drop_na(covid_raw_data)
+
 # filtering rows with classification as probable 
 covid_data &lt;- covid_data %&gt;% filter(Classification == &quot;CONFIRMED&quot;)
+
 # selecting only the columns required
 covid_data &lt;- covid_data %&gt;% select(&#39;Episode Date&#39;,&#39;Outbreak Associated&#39;, &#39;Age Group&#39;, &#39;Source of Infection&#39;, &#39;Client Gender&#39;, &#39;Outcome&#39;, &#39;Ever Hospitalized&#39;)
 
-# creating plots for better visual grasp
+# creating barplots for better visual grasp of different variables that might be of interest.
 ages &lt;- covid_data %&gt;% select(&#39;Age Group&#39;)
 source &lt;- covid_data %&gt;% select(&#39;Source of Infection&#39;)
+
 barplot(table(ages),  las=2, cex.names=.5)</code></pre>
 <p><img src="/post/2015-07-23-r-rmarkdown_files/figure-html/unnamed-chunk-1-1.png" width="672" /></p>
 <pre class="r"><code>barplot(table(source),  las=2, cex.names=.5)</code></pre>
@@ -132,26 +135,30 @@ First we clean up the data and extract all the columns which might be useful in 
 covid_time_series &lt;- as.data.frame(table(covid_data %&gt;% select(&#39;Episode Date&#39;))) %&gt;%  slice(1:(n()-3))
 covid_time_series &lt;- covid_time_series %&gt;% rename(&#39;Date&#39; = &#39;Var1&#39;, &#39;Number of Cases&#39; = &#39;Freq&#39;)
 
+# Scatter plot of the number of days passed v.s. the number of cases.
 ggplot(covid_time_series, aes (x = Date, y = `Number of Cases`))  + labs( title = &quot;Number of COVID cases Overtime&quot;, xlab = &quot;Dates from Jan to Sept 23rd&quot;, ylab = &quot;Number of cases&quot;) +  geom_point()  +theme_bw()+theme(plot.title = element_text(hjust = 0.5))</code></pre>
 <p><img src="/post/2015-07-23-r-rmarkdown_files/figure-html/unnamed-chunk-2-1.png" width="672" /></p>
-<pre class="r"><code>#ggplot(covid_time_series, aes (x = `Number of Cases`)) + labs( title = &quot;Number of COVID cases Overtime&quot;, xlab = &quot;Dates from Jan to Sept 23rd&quot;, ylab = &quot;Number of cases&quot;) +  geom_histogram()  +theme_bw()+theme(plot.title = element_text(hjust = 0.5))
-barplot(covid_time_series$`Number of Cases`)</code></pre>
+<pre class="r"><code>barplot(covid_time_series$`Number of Cases`)</code></pre>
 <p><img src="/post/2015-07-23-r-rmarkdown_files/figure-html/unnamed-chunk-2-2.png" width="672" /></p>
 <pre class="r"><code>summary(covid_time_series$`Number of Cases`)</code></pre>
 <pre><code>##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
 ##    1.00   23.50   59.00   76.78  122.00  289.00</code></pre>
 <p>The above plot if our major concern and it is a time-series(number of cases as the days passed by) graph which portrays the two variables date and count/number of cases. <em>DATE</em> is our <strong>Explanatory variable</strong> because the number of cases clearly depends on the how long COVID has been in a community. The <em>Number of cases</em> are a <strong>response variable</strong> because it is what we are interested in predicting and want to see the current trend so far. By eyeballing the graph we can see so strong trends in the data that we will explore thoroughly later in the blog.The distribution for the response variable can be viewed simply as the probability of the variable having a certain x value. We can see that it is a bi modal variable because it has two peaks of maximas. Also we can safely assume that the data is normal as it is symmetric about the center respectively for the two modes above.Lastly, summary statistics which consists of minimum, maximum, mean and the percentiles(<em>25th</em>, <em>50th</em>, <em>75th</em>) for the number of cases are also displayed.</p>
-<pre class="r"><code># converting the dates in numerical x values assuming.
+<pre class="r"><code># converting the string number to integers
 numextract &lt;- function(string){ 
   str_extract(string, &quot;\\-*\\d+\\.*\\d*&quot;)
 } 
+
+# Converting to number of days passes since first Covid case for each of the date row.
 covid_time_series &lt;- covid_time_series %&gt;% arrange(Date) %&gt;% mutate(diff = numextract(difftime(Date, &#39;2020-01-21&#39;)/(60*60*24)))
 covid_time_series$diff &lt;- as.integer(covid_time_series$diff)
 sapply(covid_time_series, class)</code></pre>
 <pre><code>##            Date Number of Cases            diff 
 ##        &quot;factor&quot;       &quot;integer&quot;       &quot;integer&quot;</code></pre>
-<pre class="r"><code>linear_model = lm(covid_time_series$`Number of Cases` ~ covid_time_series$diff, data = covid_time_series)
+<pre class="r"><code># Plotting a simple linear regression for the whole data-set
+linear_model = lm(covid_time_series$`Number of Cases` ~ covid_time_series$diff, data = covid_time_series)
 
+# Creating the scatter plot for the data and the line of best fit.
 ggplot(covid_time_series, aes(x = diff,y = `Number of Cases`)) + 
   xlab(&quot;Number of Days since first Covid case in Toronto&quot;)+
   ggtitle(&quot;Number of COVID cases v.s Number of Days Passed&quot;)+
@@ -185,101 +192,36 @@ ggplot(covid_time_series, aes(x = diff,y = `Number of Cases`)) +
 <div id="linear-regression" class="section level1">
 <h1>Linear Regression</h1>
 <p>We first add another column into the data set that consists of the number of days passed between the first day COVID case was recorded which was 2020-01-21 to the Date in each of the rows. This is a numeric value and can be used as the x parameter for our linear regression model. We use the line of best fit (also called the regression line) to model all the number of cases in Toronto as the number of days increases. Clearly, we can see that there is a downtrend overall, however this should be taken with a pinch of salt. The reason being that our current best fit line has very large error with many data points. Error is the difference between the actual data-point and the number of cases predicted by our line for any x value. A model is good if and only if the errors are relatively small. Thus our current model lacks the sophistication required to draw any certain conclusion yet.</p>
-<pre class="r"><code>covid_time_series &lt;- covid_time_series %&gt;% mutate(id = row_number())
+<pre class="r"><code># Adding a column with id = row.id
+covid_time_series &lt;- covid_time_series %&gt;% mutate(id = row_number())
+
+# Adding another column for splitting the data into four equal phases.
 covid_time_series &lt;- covid_time_series %&gt;% mutate(phase = ifelse(id &lt;= 60, 1, ifelse(id &lt;=120 &amp; id &gt; 60, 2, ifelse(id &lt;= 180 &amp; id &gt; 120, 3, 4))))
 
+# Splitting the data into 4 different data frames.
 phase1 &lt;- covid_time_series[1:60,]
 phase2 &lt;- covid_time_series[61:120,]
 phase3 &lt;- covid_time_series[121:180,]
 phase4 &lt;- covid_time_series[180:214,]
 
+# Modeling the simple linear regression for all the phases.
 linear_model1 &lt;- lm(phase1$`Number of Cases` ~ phase1$diff, phase1)
 linear_model2 &lt;- lm(phase2$`Number of Cases` ~ phase2$diff, phase2)
 linear_model3 &lt;- lm(phase3$`Number of Cases` ~ phase3$diff, phase3)
 linear_model4 &lt;- lm(phase4$`Number of Cases` ~ phase4$diff, phase4)
 
-
-ggplot(covid_time_series, aes(x = diff, y = `Number of Cases`, color = as.factor(phase))) +        geom_point() +  
+# Creating a combined graph for all the days.
+ggplot(covid_time_series, aes(x = diff, y = `Number of Cases`, color = factor(phase))) +        geom_point() +  
          scale_colour_manual(values = c(&quot;red&quot;, &quot;orange&quot;, &quot;purple&quot;, &quot;blue&quot;)) + 
          theme() + labs(x = &quot;Number of Days since first Case&quot;, title = &quot;Number of Cases vs Number of Days passed&quot;) + 
   geom_smooth(method = lm, se = FALSE )</code></pre>
 <p><img src="/post/2015-07-23-r-rmarkdown_files/figure-html/unnamed-chunk-4-1.png" width="672" /></p>
-<pre class="r"><code>summary(linear_model1)</code></pre>
-<pre><code>## 
-## Call:
-## lm(formula = phase1$`Number of Cases` ~ phase1$diff, data = phase1)
-## 
-## Residuals:
-##    Min     1Q Median     3Q    Max 
-## -50.78 -25.08 -13.55  12.99 114.47 
-## 
-## Coefficients:
-##              Estimate Std. Error t value Pr(&gt;|t|)    
-## (Intercept) -104.6135    14.7259  -7.104 1.96e-09 ***
-## phase1$diff    3.3232     0.2508  13.248  &lt; 2e-16 ***
-## ---
-## Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
-## 
-## Residual standard error: 39.27 on 58 degrees of freedom
-## Multiple R-squared:  0.7516, Adjusted R-squared:  0.7473 
-## F-statistic: 175.5 on 1 and 58 DF,  p-value: &lt; 2.2e-16</code></pre>
-<pre class="r"><code>summary(linear_model2)</code></pre>
-<pre><code>## 
-## Call:
-## lm(formula = phase2$`Number of Cases` ~ phase2$diff, data = phase2)
-## 
-## Residuals:
-##     Min      1Q  Median      3Q     Max 
-## -66.454 -19.504  -2.062  17.012  65.654 
-## 
-## Coefficients:
-##             Estimate Std. Error t value Pr(&gt;|t|)    
-## (Intercept) 362.3134    25.7492  14.071  &lt; 2e-16 ***
-## phase2$diff  -1.9692     0.2186  -9.007 1.29e-12 ***
-## ---
-## Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
-## 
-## Residual standard error: 29.33 on 58 degrees of freedom
-## Multiple R-squared:  0.5831, Adjusted R-squared:  0.5759 
-## F-statistic: 81.13 on 1 and 58 DF,  p-value: 1.289e-12</code></pre>
-<pre class="r"><code>summary(linear_model3)</code></pre>
-<pre><code>## 
-## Call:
-## lm(formula = phase3$`Number of Cases` ~ phase3$diff, data = phase3)
-## 
-## Residuals:
-##      Min       1Q   Median       3Q      Max 
-## -15.9048  -6.0844  -0.9048   6.1955  22.8217 
-## 
-## Coefficients:
-##              Estimate Std. Error t value Pr(&gt;|t|)    
-## (Intercept) 157.77855   12.40787   12.72  &lt; 2e-16 ***
-## phase3$diff  -0.72651    0.06996  -10.38 7.54e-15 ***
-## ---
-## Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
-## 
-## Residual standard error: 9.385 on 58 degrees of freedom
-## Multiple R-squared:  0.6502, Adjusted R-squared:  0.6442 
-## F-statistic: 107.8 on 1 and 58 DF,  p-value: 7.538e-15</code></pre>
-<pre class="r"><code>summary(linear_model4)</code></pre>
-<pre><code>## 
-## Call:
-## lm(formula = phase4$`Number of Cases` ~ phase4$diff, data = phase4)
-## 
-## Residuals:
-##      Min       1Q   Median       3Q      Max 
-## -20.6412  -8.3703   0.4423   5.8282  22.9636 
-## 
-## Coefficients:
-##              Estimate Std. Error t value Pr(&gt;|t|)    
-## (Intercept) -551.7678    38.2062  -14.44 8.03e-16 ***
-## phase4$diff    2.7291     0.1712   15.95  &lt; 2e-16 ***
-## ---
-## Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
-## 
-## Residual standard error: 10.23 on 33 degrees of freedom
-## Multiple R-squared:  0.8851, Adjusted R-squared:  0.8816 
-## F-statistic: 254.3 on 1 and 33 DF,  p-value: &lt; 2.2e-16</code></pre>
+<pre class="r"><code># The following code is commented for readability of blog.
+# The slope parameter were calculated from here.
+# summary(linear_model1)
+# summary(linear_model2)
+# summary(linear_model3)
+# summary(linear_model4)</code></pre>
 <p>To address the concern in the previous paragraph we have divided our data set into 4 equal halves called phases. Each phase consists approximately 70 days worth of data. Now we plot 4 regression lines to more accurately depict the scenario and this time the results are astonishingly better than before. Let us see how. Clearly, the lines of best fit are more tighter and closer to the data points and thus we have lower error rates and better fit. Thus we can conclude that even though the middle two phases we a sharp down-trend we are amid of the start of an uptrend if the necessary precautions are not taken.</p>
 <pre class="r"><code># Evaluating the correlation coefficients for each of the phases separately.
 cor(phase1$diff, phase1$`Number of Cases`)</code></pre>
