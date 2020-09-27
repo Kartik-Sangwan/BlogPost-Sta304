@@ -1,0 +1,201 @@
+---
+title: "COVID-19 is on Decline. OR IS IT?"
+author: "Kartik Sangwan"
+date: "22 September 2020"
+abstract: "This blog studies the current global pandemic COVID-19 from a statistical point of view. There are many factors that determine the extent to which COVID has spread in communities. In this blog post we will analyze the current and future sceneario for Toronto. We will examine the factors that were most responsible for the sharp rise during the outbreak, the ages of infected individuals, source of infection, and use line of best fit to predict number of future cases. Furthermore, in the end we conclude with a interesting but alarming discovery that is discussed in detail."
+
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# installing all the libraries required 
+
+# install.packages("tidyverse")
+# install.packages("blogdown")
+# install.packages("tidyverse")
+# install.packages("ggplot2")
+# install.packages("dplyr")
+# install.packages("opendatatoronto")
+# install.packages('stringr')
+
+# import the libraries
+library(tidyverse)
+library(ggplot2)
+library(blogdown)
+library(rmarkdown)
+library(opendatatoronto)
+library(stringr)
+```
+
+**Author: Kartik Sangwan**
+
+# Abstract
+
+*This blog studies the current global pandemic COVID-19 from a statistical point of view. There are many factors that determine the extent to which COVID has spread in communities. In this blog post we will analyze the current and future sceneario for Toronto. We will examine the factors that were most responsible for the sharp rise during the outbreak, the ages of infected individuals, source of infection, and use line of best fit to predict number of future cases. Furthermore, in the end we conclude with a interesting but alarming discovery that is discussed in detail.*
+
+
+# Introduction
+
+Corona Virus has taken the whole world in its grasp. It has changed how we look at life, our work environments have changed, socilaizing has been highly minimized, people are scared and concerned at the same time for their family members. Doctors and other frontline workers have been our heros this year risking their own lives to protect others. 
+This study uses the COVID-data set provided by the Toronto Public Health to understand and and draw any conclusion or to depict the visual graphs. Today, we will analyze a couple of things including: 
+
+1) Distribution of Ages of Infected Individuals
+2) Distirbution of Source of infection 
+3) The relation-ship between the number of cases v.s. the number of days passes since COVID first appeared in Toronto.
+4) Future trend and some precautionry measures.
+5) Weaknesses in this study
+
+```{r download, warning=FALSE, message=FALSE}
+# Downloading the data via the opendatatoronto API and saving the data frame
+
+covid_raw_data <- list_package_resources("https://open.toronto.ca/dataset/covid-19-cases-in-toronto/") %>% get_resource()
+
+```
+
+# Data
+
+The Covid-19 Cases in Toronto Data set contains a list of all the reported Corona virus cases in Toronto for the recent COVID-19 outbreak. This data set has a wide variety of attributes such as age group, source of infection, demographic, geographic, and severity information, and hospitalization information on the patients for all confirmed cases reported to and managed by Toronto Public Health since the first case was reported in January 2020. "The data are extracted from the provincial communicable disease reporting system (i Phis) and Toronto's custom COVID-19 case management system (CORES) and combined for reporting". Each row in the data set contains information regarding a single case. 
+
+```{r}
+# First few rows of the dataset
+head(covid_raw_data)
+# removing rows with any na values for any column.
+covid_data <- drop_na(covid_raw_data)
+# filtering rows with classification as probable 
+covid_data <- covid_data %>% filter(Classification == "CONFIRMED")
+# selecting only the columns required
+covid_data <- covid_data %>% select('Episode Date','Outbreak Associated', 'Age Group', 'Source of Infection', 'Client Gender', 'Outcome', 'Ever Hospitalized')
+
+# creating plots for better visual grasp
+ages <- covid_data %>% select('Age Group')
+source <- covid_data %>% select('Source of Infection')
+barplot(table(ages),  las=2, cex.names=.5)
+barplot(table(source),  las=2, cex.names=.5)
+```
+# Initial Exploratory Data Analysis
+First we clean up the data and extract all the columns which might be useful in analysis. We shrink the data set to include only 'Episode Date','Outbreak Associated', 'Age Group', 'Source of Infection', 'Client Gender', 'Outcome', 'Ever Hospitalized' columns for each of the COVID case. We also remove any row which has a NA value in it, so that data set is a true depiction of the cases that were fully documented. We plot two bar plots for the categorical data source of infection and age of person infected. The distribution of cases according to age of person is some-what decreasing from ages 20-90 which might be due to the reason that the population of Toronto has a higher percentage of youths 20-50 than elderly 60+. In the second bar-plot we can see that the highest number of cases happened due to initial Outbreak of COVID-19. The second most major reason was close contact of close proximity to an infected individual. One startling feature is that only 1000 cases so far have been reported due to Travel related activities. This might be a assuring factor that self isolation for all travelers is working out well and people are following it.
+
+
+```{r}
+# creating a time-series data for number of covid cases.
+covid_time_series <- as.data.frame(table(covid_data %>% select('Episode Date'))) %>%  slice(1:(n()-3))
+covid_time_series <- covid_time_series %>% rename('Date' = 'Var1', 'Number of Cases' = 'Freq')
+
+ggplot(covid_time_series, aes (x = Date, y = `Number of Cases`))  + labs( title = "Number of COVID cases Overtime", xlab = "Dates from Jan to Sept 23rd", ylab = "Number of cases") +  geom_point()  +theme_bw()+theme(plot.title = element_text(hjust = 0.5))
+
+#ggplot(covid_time_series, aes (x = `Number of Cases`)) + labs( title = "Number of COVID cases Overtime", xlab = "Dates from Jan to Sept 23rd", ylab = "Number of cases") +  geom_histogram()  +theme_bw()+theme(plot.title = element_text(hjust = 0.5))
+barplot(covid_time_series$`Number of Cases`)
+summary(covid_time_series$`Number of Cases`)
+```
+The above plot if our major concern and it is a time-series(number of cases as the days passed by) graph which portrays the two variables date and count/number of cases. *DATE* is our **Explanatory variable** because the number of cases clearly depends on the how long COVID has been in a community. The *Number of cases* are a **response variable** because it is what we are interested in predicting and want to see the current trend so far. By eyeballing the graph we can see so strong trends in the data that we will explore thoroughly later in the blog.The distribution for the response variable can be viewed simply as the probability of the variable having a certain x value. We can see that it is a bi modal variable because it has two peaks of maximas. Also we can safely assume that the data is normal as it is symmetric about the center respectively for the two modes above.Lastly, summary statistics which consists of minimum, maximum, mean and the percentiles(*25th*, *50th*, *75th*) for the number of cases are also displayed.
+
+```{r}
+# converting the dates in numerical x values assuming.
+numextract <- function(string){ 
+  str_extract(string, "\\-*\\d+\\.*\\d*")
+} 
+covid_time_series <- covid_time_series %>% arrange(Date) %>% mutate(diff = numextract(difftime(Date, '2020-01-21')/(60*60*24)))
+covid_time_series$diff <- as.integer(covid_time_series$diff)
+sapply(covid_time_series, class)
+
+linear_model = lm(covid_time_series$`Number of Cases` ~ covid_time_series$diff, data = covid_time_series)
+
+ggplot(covid_time_series, aes(x = diff,y = `Number of Cases`)) + 
+  xlab("Number of Days since first Covid case in Toronto")+
+  ggtitle("Number of COVID cases v.s Number of Days Passed")+
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  geom_point(shape = 15, size = 1) + 
+  geom_smooth(method = "lm", se=FALSE)
+summary(linear_model)
+```
+
+# Linear Regression
+We first add another column into the data set that consists of the number of days passed between the first day COVID case was recorded which was 2020-01-21 to the Date in each of the rows. This is a numeric value and can be used as the x parameter for our linear regression model. We use the line of best fit (also called the regression line) to model all the number of cases in Toronto as the number of days increases. Clearly, we can see that there is a downtrend overall, however this should be taken with a pinch of salt. The reason being that our current best fit line has very large error with many data points. Error is the difference between the actual data-point and the number of cases predicted by our line for any x value. A model is good if and only if the errors are relatively small. Thus our current model lacks the sophistication required to draw any certain conclusion yet. 
+
+```{r message = FALSE}
+covid_time_series <- covid_time_series %>% mutate(id = row_number())
+covid_time_series <- covid_time_series %>% mutate(phase = ifelse(id <= 60, 1, ifelse(id <=120 & id > 60, 2, ifelse(id <= 180 & id > 120, 3, 4))))
+
+phase1 <- covid_time_series[1:60,]
+phase2 <- covid_time_series[61:120,]
+phase3 <- covid_time_series[121:180,]
+phase4 <- covid_time_series[180:214,]
+
+linear_model1 <- lm(phase1$`Number of Cases` ~ phase1$diff, phase1)
+linear_model2 <- lm(phase2$`Number of Cases` ~ phase2$diff, phase2)
+linear_model3 <- lm(phase3$`Number of Cases` ~ phase3$diff, phase3)
+linear_model4 <- lm(phase4$`Number of Cases` ~ phase4$diff, phase4)
+
+
+ggplot(covid_time_series, aes(x = diff, y = `Number of Cases`, color = as.factor(phase))) +        geom_point() +  
+         scale_colour_manual(values = c("red", "orange", "purple", "blue")) + 
+         theme() + labs(x = "Number of Days since first Case", title = "Number of Cases vs Number of Days passed") + 
+  geom_smooth(method = lm, se = FALSE )
+
+summary(linear_model1)
+summary(linear_model2)
+summary(linear_model3)
+summary(linear_model4)
+
+```
+To address the concern in the previous paragraph we have divided our data set into 4 equal halves called phases. Each phase consists approximately 70 days worth of data. Now we  plot 4 regression lines to more accurately depict the scenario and this time the results are astonishingly better than before. Let us see how. Clearly, the lines of best fit are more tighter and closer to the data points and thus we have lower error rates and better fit. Thus we can conclude that even though the middle two phases we a sharp down-trend we are amid of the start of an uptrend if the necessary precautions are not taken.
+
+```{r}
+# Evaluating the correlation coefficients for each of the phases separately.
+cor(phase1$diff, phase1$`Number of Cases`)
+cor(phase2$diff, phase2$`Number of Cases`)
+cor(phase3$diff, phase3$`Number of Cases`)
+cor(phase4$diff, phase4$`Number of Cases`)
+```
+We can clearly, see that they is strong correlation between both of the variables as $|cor(x,y)| \geq 0.75$. This means that the number of days passed is a good explantory or predictor varible for the number of cases in Toronto. From this we can infer that our linear model is performing well for the separate phases and is a good estimator for the past trend and the future predictions.
+
+
+# Discussion
+We can see that in summer due to partial lock-down and other health policies implemented by the government must have caused a decrease in the number of cases. However, near the end of people became irrational and started partying, going outdoors to beaches and other socializing activities, all of which has led to rising infections daily. Statistically, 
+the slope (the trend in simple words) for current phase 4 is 2.73 which is very close to the phase 1 slope 3.32. Also the absolute number of cases have risen from also 10 near the end of phase 3 to nearly 120 in phase 4. This is a 12 fold increase in mere 4 weeks. This indicates high resemblance of the current situation with the initial outbreak. Thus we conclude that COVID-19 has not yet disappeared from our lives and we should not take the current situation lightly, but instead should take all the necessary precautions that are provided by the governments such as wearing masks in in-door places, trying to self isolate if feeling ill, less socializing and outdoor activities. If however, people don't understand the severity of the situation then this new small up-trend might turn into the second wave of corona virus and ultimately lead to more economic and personal loss which would be disastrous.
+
+## Weaknesses and next steps
+
+However, the analysis done here provides just a basic knowledge and understanding of our current situation in the pandemic. There might be many other factor such as opening of schools, restaurants, gyms, outdoor activities, which all have not been taken into account in this study. These variable are termed as lurking variables and might have a strong effect on both the explanatory(number of days passed) and response variable(number of cases). Thus we might be wrongly concluding that the number of days passed is the largest factor predicting the number of cases, however actually number of cases might be a result of any of these other lurking variables. 
+
+In terms of next steps to further analyze the current and future scenario of the pandemic in Toronto one might considering taking other variables into the study and plot linear or even non-linear models to capture accurately the trend of COVID-19 in Toronto.
+
+
+# References
+
+- R Core Team (2020). R: A language and environment for statistical
+  computing. R Foundation for Statistical Computing, Vienna,
+  Austria. URL https://www.R-project.org/.
+
+- City of Toronto and Toronto Public Health,         https://open.toronto.ca/dataset/covid-19-cases-in-toronto/
+
+- Wickham et al., (2019). Welcome to the tidyverse. Journal of Open
+  Source Software, 4(43), 1686, https://doi.org/10.21105/joss.01686
+
+- H. Wickham. ggplot2: Elegant Graphics for Data Analysis.
+  Springer-Verlag New York, 2016.
+
+- Hadley Wickham, Romain François, Lionel Henry and Kirill Müller
+  (2020). dplyr: A Grammar of Data Manipulation. R package version
+  1.0.2. https://CRAN.R-project.org/package=dplyr
+
+- Yihui Xie (2020). knitr: A General-Purpose Package for Dynamic
+  Report Generation in R. R package version 1.29.
+  
+- JJ Allaire and Yihui Xie and Jonathan McPherson and Javier Luraschi and Kevin
+  Ushey and Aron Atkins and Hadley Wickham and Joe Cheng and Winston Chang and
+  Richard Iannone (2020). rmarkdown: Dynamic Documents for R. R package version
+  2.3. URL https://rmarkdown.rstudio.com.
+
+- Yihui Xie and J.J. Allaire and Garrett Grolemund (2018). R Markdown: The
+  Definitive Guide. Chapman and Hall/CRC. ISBN 9781138359338. URL
+  https://bookdown.org/yihui/rmarkdown.
+  
+- Yihui Xie (2020). blogdown: Create Blogs and Websites with R Markdown. R package
+  version 0.20.
+
+
+
