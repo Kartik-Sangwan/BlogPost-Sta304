@@ -87,7 +87,7 @@ The above plot if our major concern and it is a time-series(number of cases as t
 
 ```{r}
 
-# extracting only the date part from the string.
+# Extracting only the date part from the string.
 numextract <- function(string){ 
   str_extract(string, "\\-*\\d+\\.*\\d*")
 } 
